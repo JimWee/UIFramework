@@ -10,15 +10,14 @@ public class MainWindow : Window
     public GameObject friendBtn;
     public GameObject modelNode;
 
-    public MainWindow() : base(WindowType.Normal, HideMode.HideNothing, "UIPrefabs/UIMainWindow", false)
-    {
-        SetCacheUIs(new string[] { "UIPrefabs/UIRaiseWindow" });
-        SetZSpace(1000);
-    }
+    public MainWindow() : base(WindowType.Normal, HideMode.HideNothing, "UIPrefabs/UIMainWindow", true){}
 
     public override void Init()
     {
         base.Init();
+
+        SetCacheUIs(new string[] { "UIPrefabs/UIRaiseWindow" });
+        SetZSpace(1000);
 
         mapBtn = uiTransform.Find("BtnMap").gameObject;
         raiseBtn = uiTransform.Find("BtnRaise").gameObject;
@@ -27,7 +26,7 @@ public class MainWindow : Window
 
         UIUtility.RegisterClickedEvent(mapBtn, () => { });
         UIUtility.RegisterClickedEvent(raiseBtn, () => { WindowManager.Instance.LoadWindow<RaiseWindow>(); });
-        UIUtility.RegisterClickedEvent(friendBtn, () => { });
+        UIUtility.RegisterClickedEvent(friendBtn, () => { WindowManager.Instance.LoadWindow<FriendWindow>(null, true); });
 
         ResourceManager.Instance.LoadAssetAsync(
             "Models/HomeModel", 

@@ -49,22 +49,22 @@ public class MessageWindow : Window
                 okBtn,
                 () =>
                 {
+                    WindowManager.Instance.GoBack();
                     if (msgWindowArgs.onOkClicked != null)
                     {
                         msgWindowArgs.onOkClicked();
-                    }
-                    WindowManager.Instance.GoBack();
+                    }                    
                 });
 
             UIUtility.RegisterClickedEvent(
                 cancelBtn,
                 () =>
                 {
+                    WindowManager.Instance.GoBack();
                     if (msgWindowArgs.onCancelClicked != null)
                     {
                         msgWindowArgs.onCancelClicked();
-                    }
-                    WindowManager.Instance.GoBack();
+                    }                    
                 });
         }
         else

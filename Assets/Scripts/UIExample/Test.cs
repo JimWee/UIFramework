@@ -1,10 +1,11 @@
 ﻿using UnityEngine;
 using System.Collections;
+using UnityEngine.UI;
 using UIFramework;
 
-public class SkillWindow : Window
+public class Test : Window
 {
-    public SkillWindow() : base(WindowType.Normal, HideMode.HideNothing, "UIPrefabs/UISkillWindow"){}
+    public Test() : base(WindowType.Normal, HideMode.HideNothing, "UIPrefabs/UIFriendWindow") { }
 
     public override void Init()
     {

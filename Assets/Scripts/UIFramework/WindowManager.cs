@@ -38,11 +38,11 @@ namespace UIFramework
         /// <summary>
         /// 等待UI加载完毕的超时时间，单位秒
         /// </summary>
-        public const float loadUIExpireTime = 1f;
+        public float loadUIExpireTime = 1f;
         /// <summary>
         /// 两个UI间的canvas order 间隙
         /// </summary>
-        public const int canvasOrderGap = 10;
+        public int canvasOrderGap = 1;
         /// <summary>
         /// 缓存的UI
         /// </summary>
@@ -67,6 +67,7 @@ namespace UIFramework
             cacheWindows = new Dictionary<string, Window>();
             windows = new List<Window>();
             windowArgsDic = new Dictionary<string, object>();
+            DontDestroyOnLoad(gameObject);
         }
 
         public void CacheUI(string uiPath)
@@ -118,22 +119,44 @@ namespace UIFramework
             Window window;
 
             int index = FindWindow(typeof(T).ToString());
-            if (index >= 0)//如果窗口已存在，则移到顶端
+            if (index >= 0)//如果窗口已存在，则移到顶端,根窗口除外
             {
                 window = windows[index] as T;
+                if (window.isRoot)
+                {
+                    Debug.LogErrorFormat("can not load existing root window : {0}", window.windowName);
+                    yield break;
+                }
                 windows.RemoveAt(index);
                 windows.Add(window);
             }
             else//否则新建窗口，加入顶端
             {
                 window = NewWindow<T>();
-                yield return LoadUI(window, isAsync);
+                windows.Add(window);
+                yield return StartCoroutine(LoadUI(window, isAsync));
                 if (!string.IsNullOrEmpty(window.error))
                 {
                     Debug.LogErrorFormat("Load Window Fail - {0}", window.error);
+                    int errorIndex = FindWindow(window.windowName);
+                    if (errorIndex >= 0)
+                    {
+                        Window errorWindow = windows[errorIndex];
+                        windows.RemoveAt(errorIndex);
+                        DeleteWindow(errorWindow);
+                    }
+                    yield break;
                 }
-                windows.Add(window);
+                
             }
+            //窗口参数
+            if (windowArgs != null)
+            {
+                window.args = windowArgs;
+                windowArgsDic[window.windowName] = windowArgs;
+            }
+
+            window.Init();
 
             //如果需要，隐藏前一个窗口
             Window preWindow = windows.Count > 1 ? windows[windows.Count - 2] : null;
@@ -162,19 +185,18 @@ namespace UIFramework
             if (preWindow != null)
             {
                 float deltaZ = preWindow.zSpace;
-                var pos = window.uiTransform.localPosition;
-                window.uiTransform.localPosition = new Vector3(pos.x, pos.y, preWindow.uiTransform.localPosition.z - deltaZ);
+                var windowPos = window.uiTransform.localPosition;
+                window.uiTransform.localPosition = new Vector3(windowPos.x, windowPos.y, preWindow.uiTransform.localPosition.z - deltaZ);
             }
 
-            //窗口参数
-            if (windowArgs != null)
-            {
-                window.args = windowArgs;
-                windowArgsDic[window.windowName] = windowArgs;
-            }
+            //更新相机和加载提示UI的Z值
+            float z = window.uiTransform.localPosition.z - window.zSpace - 1000;
+            var pos = loadingTipUI.transform.localPosition;
+            loadingTipUI.transform.localPosition = new Vector3(pos.x, pos.y, z);
+            pos = uiCamera.transform.localPosition;
+            uiCamera.transform.localPosition = new Vector3(pos.x, pos.y, z - 1000);
 
-            //窗口初始化
-            window.Init();
+            //显示窗口
             window.Show();
 
             //隐藏异步加载UI，触发回调
@@ -198,13 +220,16 @@ namespace UIFramework
                 float startTime = Time.realtimeSinceStartup;
                 while (!cacheUI.isLoaded)
                 {
+                    loadingTipUI.SetActive(true);
                     yield return null;
                     if (Time.realtimeSinceStartup - startTime > loadUIExpireTime)
                     {
                         window.error = string.Format("wait for cache ui load time expire : {0}", cacheUI.path);
+                        loadingTipUI.SetActive(false);
                         yield break;
                     }
                 }
+                loadingTipUI.SetActive(false);
                 uiGameObject = cacheUI.gameObject;
                 cacheUIs.Remove(window.uiPath);
             }
@@ -249,24 +274,16 @@ namespace UIFramework
 
             Window window = windows[windows.Count - 1]; 
                        
-            if (window.isResponseBackEvent)
+            if (!window.isRoot)
             {
-                //弹出销毁栈顶窗口
+                //弹出栈顶窗口
                 windows.RemoveAt(windows.Count - 1);
-                window.Hide();
-                window.Destroy();
+                window.Hide();                
 
                 //如果需要，清除记录的窗口参数
                 if (window.args != null)
                 {
                     windowArgsDic.Remove(window.windowName);
-                    window.args = null;
-                }
-
-                //显示当前栈顶窗口
-                if (windows.Count > 0)
-                {
-                    windows[windows.Count - 1].Show();
                 }
 
                 //加入UI缓存
@@ -279,18 +296,25 @@ namespace UIFramework
                 {
                     GameObject.Destroy(window.uiGameObject);
                 }
-                window.uiGameObject = null;
-                window.uiTransform = null;
 
-                //加入窗口缓存
-                if (!cacheWindows.ContainsKey(window.windowName))
+                window.Destroy();
+
+                DeleteWindow(window);
+
+                //显示当前栈顶窗口
+                if (windows.Count > 0)
                 {
-                    cacheWindows.Add(window.windowName, window);
+                    windows[windows.Count - 1].Show();
                 }
             }
             else
             {
                 //弹出提示退出游戏的界面
+                MessageWindowArgs args = new MessageWindowArgs();
+                args.btnNumber = 2;
+                args.messageText = "确认退出游戏";
+                args.onOkClicked = () => { Application.Quit(); };
+                LoadWindow<MessageWindow>(args);
             }
         }
 
@@ -362,6 +386,15 @@ namespace UIFramework
                 window = new T();
             }
             return window;
+        }
+
+        private void DeleteWindow(Window window)
+        {
+            window.Clear();
+            if (!cacheWindows.ContainsKey(window.windowName))
+            {
+                cacheWindows.Add(window.windowName, window);
+            }
         }
     }
 }

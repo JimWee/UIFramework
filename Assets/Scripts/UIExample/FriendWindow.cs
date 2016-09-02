@@ -2,9 +2,9 @@
 using System.Collections;
 using UIFramework;
 
-public class SkillWindow : Window
+public class FriendWindow : Window
 {
-    public SkillWindow() : base(WindowType.Normal, HideMode.HideNothing, "UIPrefabs/UISkillWindow"){}
+    public FriendWindow() : base(WindowType.Normal, HideMode.HideNothing, "UIPrefabs/UIFriendWindow"){}
 
     public override void Init()
     {

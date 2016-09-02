@@ -46,10 +46,6 @@ namespace UIFramework
         /// </summary>
         public string windowName;
         /// <summary>
-        /// 是否相应返回键事件，不响应则会提示是否退出程序(谷歌要求所有界面能对返回键做出正确响应)
-        /// </summary>
-        public bool isResponseBackEvent;
-        /// <summary>
         /// 传递给当前窗口的参数
         /// </summary>
         public object args;
@@ -78,15 +74,19 @@ namespace UIFramework
         /// 窗口需要的Z值空间（用于防止3D模型穿插）
         /// </summary>
         public float zSpace;
+        /// <summary>
+        /// 是否根窗口，根窗口会在开始是被创建，并且在当前场景不会被销毁
+        /// </summary>
+        public bool isRoot;
 
-        public Window(WindowType type, HideMode hideMode, string uiPath, bool isResponseBackEvent = true)
+        public Window(WindowType type, HideMode hideMode, string uiPath, bool isRoot = false)
         {
             this.type = type;
             this.hideMode = hideMode;
             this.uiPath = uiPath;
-            this.isResponseBackEvent = isResponseBackEvent;
             this.windowName = this.GetType().ToString();
             this.isActive = false;
+            this.isRoot = isRoot;
         }
 
         /// <summary>
@@ -121,23 +121,6 @@ namespace UIFramework
             this.zSpace = zSpace;
         }
         /// <summary>
-        /// 动态加载粒子特效，自动设置正确的order in layer
-        /// </summary>
-        /// <param name="node"></param>
-        /// <param name="path"></param>
-        /// <returns></returns>
-        public GameObject LoadFX(GameObject node, string path)
-        {
-            maxCanvasOrder += 1;
-            GameObject fx = GameObject.Instantiate(ResourceManager.Instance.LoadAsset(path)) as GameObject;
-            Renderer renderer = fx.GetComponent<Renderer>();
-            renderer.sortingLayerName = type.ToString();
-            ++maxCanvasOrder;
-            renderer.sortingOrder = maxCanvasOrder;
-            fx.transform.SetParent(node.transform, false);
-            return fx;
-        }
-        /// <summary>
         /// 当前窗口是否显示
         /// </summary>
         /// <returns></returns>
@@ -170,9 +153,17 @@ namespace UIFramework
         /// </summary>
         public virtual void Destroy()
         {
+        }
+
+        public void Clear()
+        {
             args = null;
             zSpace = 0;
             error = null;
+            uiGameObject = null;
+            uiTransform = null;
+            minCanvasOrder = 0;
+            maxCanvasOrder = 0;
         }
     }
 }
