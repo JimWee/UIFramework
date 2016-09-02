@@ -24,12 +24,10 @@ namespace UIFramework
         HidePrevious,   //隐藏前一个窗口
     }
 
-    public class WindowArgs { }
-
     /// <summary>
     /// 窗口基类
     /// </summary>
-    public class Window : MonoBehaviour
+    public class Window
     {
         /// <summary>
         /// 窗口类型
@@ -46,23 +44,15 @@ namespace UIFramework
         /// <summary>
         /// 窗口名字
         /// </summary>
-        public string uiName;
-        /// <summary>
-        /// 加载当前窗口需要预缓存的UI
-        /// </summary>
-        public string[] cacheUIs;
+        public string windowName;
         /// <summary>
         /// 是否相应返回键事件，不响应则会提示是否退出程序(谷歌要求所有界面能对返回键做出正确响应)
         /// </summary>
         public bool isResponseBackEvent;
         /// <summary>
-        /// 窗口中所有触发关闭窗口的按钮，用于同一处理关闭事件
-        /// </summary>
-        public GameObject[] closeBtns;
-        /// <summary>
         /// 传递给当前窗口的参数
         /// </summary>
-        public WindowArgs args;
+        public object args;
         /// <summary>
         /// UI的gameObject
         /// </summary>
@@ -95,7 +85,7 @@ namespace UIFramework
             this.hideMode = hideMode;
             this.uiPath = uiPath;
             this.isResponseBackEvent = isResponseBackEvent;
-            this.uiName = this.GetType().ToString();
+            this.windowName = this.GetType().ToString();
             this.isActive = false;
         }
 
@@ -105,7 +95,6 @@ namespace UIFramework
         /// <param name="cacheUIs"></param>
         public void SetCacheUIs(string[] cacheUIs)
         {
-            this.cacheUIs = cacheUIs;
             for (int i = 0; i < cacheUIs.Length; i++)
             {
                 WindowManager.Instance.CacheUI(cacheUIs[i]);
@@ -140,8 +129,11 @@ namespace UIFramework
         public GameObject LoadFX(GameObject node, string path)
         {
             maxCanvasOrder += 1;
-            GameObject fx = ResourceManager.LoadAsset(path) as GameObject;
-            fx.GetComponent<Renderer>().sortingOrder = maxCanvasOrder;
+            GameObject fx = GameObject.Instantiate(ResourceManager.Instance.LoadAsset(path)) as GameObject;
+            Renderer renderer = fx.GetComponent<Renderer>();
+            renderer.sortingLayerName = type.ToString();
+            ++maxCanvasOrder;
+            renderer.sortingOrder = maxCanvasOrder;
             fx.transform.SetParent(node.transform, false);
             return fx;
         }
@@ -176,6 +168,11 @@ namespace UIFramework
         /// <summary>
         /// 窗口销毁，关闭窗口时调用
         /// </summary>
-        public virtual void Destroy() { }
+        public virtual void Destroy()
+        {
+            args = null;
+            zSpace = 0;
+            error = null;
+        }
     }
 }

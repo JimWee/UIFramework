@@ -25,6 +25,7 @@ namespace UIFramework
         public Transform normalRoot;
         public Transform fixedRoot;
         public Transform popupRoot;
+        public Transform cacheRoot;
         public Camera uiCamera;
         public GameObject loadingTipUI;
 
@@ -42,30 +43,30 @@ namespace UIFramework
         /// 两个UI间的canvas order 间隙
         /// </summary>
         public const int canvasOrderGap = 10;
-
         /// <summary>
         /// 缓存的UI
         /// </summary>
         public Dictionary<string, CacheUI> cacheUIs;
         /// <summary>
+        /// 缓存的窗口
+        /// </summary>
+        public Dictionary<string, Window> cacheWindows;
+        /// <summary>
         /// 所有类型的窗口
         /// </summary>
-        public Dictionary<WindowType, List<Window>> windows;
+        public List<Window> windows;
         /// <summary>
         /// 记录的窗口参数，用于恢复窗口
         /// </summary>  
-        public Dictionary<string, WindowArgs> windowArgsDic;
+        public Dictionary<string, object> windowArgsDic;
 
         void Awake()
         {
             instance = this;
             cacheUIs = new Dictionary<string, CacheUI>();
-            windows = new Dictionary<WindowType, List<Window>>();
-            foreach (WindowType type in Enum.GetValues(typeof(WindowType)))
-            {
-                windows.Add(type, new List<Window>());
-            }
-            windowArgsDic = new Dictionary<string, WindowArgs>();
+            cacheWindows = new Dictionary<string, Window>();
+            windows = new List<Window>();
+            windowArgsDic = new Dictionary<string, object>();
         }
 
         public void CacheUI(string uiPath)
@@ -76,7 +77,7 @@ namespace UIFramework
             }
 
             cacheUIs.Add(uiPath, new CacheUI(uiPath, null, false));
-            ResourceManager.LoadAssetAsync(
+            ResourceManager.Instance.LoadAssetAsync(
                 uiPath,
                 (Object obj) =>
                 {
@@ -84,25 +85,29 @@ namespace UIFramework
                     {
                         Debug.LogError(string.Format("cache UI failed: {0}", uiPath));
                     }
+
+                    GameObject instance = GameObject.Instantiate(obj) as GameObject;
+                    instance.transform.SetParent(cacheRoot, false);
+
                     CacheUI cacheUI = cacheUIs[uiPath];
                     if (cacheUI == null)
                     {
-                        cacheUIs[uiPath] = new CacheUI(uiPath, obj as GameObject, true);
+                        cacheUIs[uiPath] = new CacheUI(uiPath, instance, true);
                     }
                     else
                     {
-                        cacheUI.gameObject = obj as GameObject;
+                        cacheUI.gameObject = instance;
                         cacheUI.isLoaded = true;
                     }
                 });
         }
 
-        public void LoadWindow<T>(WindowArgs windowArgs = null, bool isAsync = false, Action callback = null) where T : Window, new()
+        public void LoadWindow<T>(object windowArgs = null, bool isAsync = false, Action callback = null) where T : Window, new()
         {
             StartCoroutine(_LoadWindow<T>(windowArgs, isAsync, callback));
         }
 
-        private IEnumerator _LoadWindow<T>(WindowArgs windowArgs = null, bool isAsync = false, Action callback = null) where T : Window, new()
+        private IEnumerator _LoadWindow<T>(object windowArgs = null, bool isAsync = false, Action callback = null) where T : Window, new()
         {
             //显示异步加载UI
             if (isAsync)
@@ -110,48 +115,39 @@ namespace UIFramework
                 loadingTipUI.SetActive(true);
             }
 
-            T window = new T();
+            Window window;
 
-            //显示normal窗口时，清空popup窗口
-            if (window.type == WindowType.Normal)
+            int index = FindWindow(typeof(T).ToString());
+            if (index >= 0)//如果窗口已存在，则移到顶端
             {
-                ClearWindows(windows[WindowType.Popup]);
+                window = windows[index] as T;
+                windows.RemoveAt(index);
+                windows.Add(window);
             }
-
-            var curTypeWindows = windows[window.type];
-
-            //除normal类型窗口都新建，normal类型在不存在时新建，存在则提到栈顶
-            if (window.type != WindowType.Normal || (window.type == WindowType.Normal && !CheckNormalWindowExist(typeof(T).ToString())))
+            else//否则新建窗口，加入顶端
             {
-                yield return StartCoroutine(LoadUI(window, isAsync));
+                window = NewWindow<T>();
+                yield return LoadUI(window, isAsync);
                 if (!string.IsNullOrEmpty(window.error))
                 {
-                    Debug.LogError(window.error);
-                    if (isAsync)
-                    {
-                        loadingTipUI.SetActive(false);
-                    }
-                    yield break;
+                    Debug.LogErrorFormat("Load Window Fail - {0}", window.error);
                 }
-
-                curTypeWindows.Add(window);
+                windows.Add(window);
             }
 
-            Window curWindow = curTypeWindows[curTypeWindows.Count - 1];
-
             //如果需要，隐藏前一个窗口
-            Window preWindow = null;
-            if (curWindow.hideMode == HideMode.HidePrevious && curTypeWindows.Count > 1)
+            Window preWindow = windows.Count > 1 ? windows[windows.Count - 2] : null;
+
+            if (window.hideMode == HideMode.HidePrevious && preWindow != null)
             {
-                preWindow = curTypeWindows[curTypeWindows.Count - 2];
                 preWindow.Hide();
             }
 
             //设置canvas order
             int minCanvasOrder = preWindow == null ? 0 : preWindow.maxCanvasOrder + canvasOrderGap;
-            curWindow.minCanvasOrder = minCanvasOrder;
-            curWindow.uiGameObject.GetComponent<Canvas>().sortingOrder = minCanvasOrder;
-            ParticleSystem[] particleSystems = curWindow.uiGameObject.GetComponentsInChildren<ParticleSystem>(true);
+            window.minCanvasOrder = minCanvasOrder;
+            window.uiGameObject.GetComponent<Canvas>().sortingOrder = minCanvasOrder;
+            ParticleSystem[] particleSystems = window.uiGameObject.GetComponentsInChildren<ParticleSystem>(true);
             int maxCanvasOrder = minCanvasOrder;
             for (int i = 0; i < particleSystems.Length; i++)
             {
@@ -160,31 +156,26 @@ namespace UIFramework
                 maxCanvasOrder = Mathf.Max(canvasOrder, maxCanvasOrder);
                 renderer.sortingOrder = canvasOrder;
             }
-            curWindow.maxCanvasOrder = maxCanvasOrder;
+            window.maxCanvasOrder = maxCanvasOrder;
 
             //设置当前窗口Z值
-            float deltaZ = preWindow == null ? 0 : preWindow.zSpace;
-            var pos = curWindow.uiTransform.localPosition;
-            curWindow.uiTransform.localPosition = new Vector3(pos.x, pos.y, pos.z);
-
-            //更新UIRoot和UICamera的Z值
-            SetNodeZAboveWindows(fixedRoot, windows[WindowType.Normal], normalRoot);
-            SetNodeZAboveWindows(popupRoot, windows[WindowType.Fixed], fixedRoot);
-            SetNodeZAboveWindows(uiCamera.transform, windows[WindowType.Popup], popupRoot);
+            if (preWindow != null)
+            {
+                float deltaZ = preWindow.zSpace;
+                var pos = window.uiTransform.localPosition;
+                window.uiTransform.localPosition = new Vector3(pos.x, pos.y, preWindow.uiTransform.localPosition.z - deltaZ);
+            }
 
             //窗口参数
             if (windowArgs != null)
             {
-                curWindow.args = windowArgs;
-                if (curWindow.type == WindowType.Normal)
-                {
-                    windowArgsDic[curWindow.uiName] = windowArgs;
-                }
+                window.args = windowArgs;
+                windowArgsDic[window.windowName] = windowArgs;
             }
 
             //窗口初始化
-            curWindow.Init();
-            curWindow.Show();
+            window.Init();
+            window.Show();
 
             //隐藏异步加载UI，触发回调
             if (isAsync)
@@ -201,7 +192,7 @@ namespace UIFramework
         private IEnumerator LoadUI(Window window, bool isAsync = false)
         {
             GameObject uiGameObject = null;
-            if (cacheUIs.ContainsKey(window.uiPath))
+            if (cacheUIs.ContainsKey(window.uiPath))//如果UI已缓存，等待UI加载完毕
             {
                 CacheUI cacheUI = cacheUIs[window.uiPath];
                 float startTime = Time.realtimeSinceStartup;
@@ -215,14 +206,15 @@ namespace UIFramework
                     }
                 }
                 uiGameObject = cacheUI.gameObject;
+                cacheUIs.Remove(window.uiPath);
             }
             else if (isAsync)
             {
-                yield return StartCoroutine(ResourceManager.LoadAssetAsync(window.uiPath, (Object obj) => { uiGameObject = obj as GameObject; }));
+                yield return StartCoroutine(ResourceManager.Instance._LoadAssetAsync(window.uiPath, (Object obj) => { uiGameObject = GameObject.Instantiate(obj) as GameObject; }));
             }
             else
             {
-                uiGameObject = ResourceManager.LoadAsset(window.uiPath) as GameObject;
+                uiGameObject = GameObject.Instantiate(ResourceManager.Instance.LoadAsset(window.uiPath)) as GameObject;
             }
 
             if (uiGameObject == null)
@@ -230,7 +222,6 @@ namespace UIFramework
                 window.error = string.Format("load ui failed : {0}", window.uiPath);
                 yield break;
             }
-            cacheUIs[window.uiPath] = new CacheUI(window.uiPath, uiGameObject, true);
 
             AnchorUIGameObject(uiGameObject, window.type);
             window.uiGameObject = uiGameObject;
@@ -242,50 +233,59 @@ namespace UIFramework
         /// </summary>
         public void GoBack()
         {
-            ///先处理popup窗口栈
-            var popupwindows = windows[WindowType.Popup];            
-            if (popupwindows.Count > 0)
-            {
-                PopWindow(popupwindows);
-                return;
-            }
-
-            ///popup窗口栈为空时，再处理normal窗口栈
-            var normalwindows = windows[WindowType.Normal];
-            PopWindow(normalwindows);
-
+            PopWindow();
         }
 
         /// <summary>
         /// 关闭窗口栈栈顶的窗口
         /// </summary>
         /// <param name="windows"></param>
-        private void PopWindow(List<Window> windows)
+        private void PopWindow()
         {
             if (windows.Count == 0)
             {
                 return;
             }
 
-            Window curWindow = windows[windows.Count - 1]; 
+            Window window = windows[windows.Count - 1]; 
                        
-            if (curWindow.isResponseBackEvent)
+            if (window.isResponseBackEvent)
             {
-                //弹出销毁栈顶元素
+                //弹出销毁栈顶窗口
                 windows.RemoveAt(windows.Count - 1);
-                curWindow.Hide();
-                curWindow.Destroy();
+                window.Hide();
+                window.Destroy();
 
                 //如果需要，清除记录的窗口参数
-                if (curWindow.args != null && curWindow.type == WindowType.Normal)
+                if (window.args != null)
                 {
-                    windowArgsDic.Remove(curWindow.uiName);
+                    windowArgsDic.Remove(window.windowName);
+                    window.args = null;
                 }
 
                 //显示当前栈顶窗口
                 if (windows.Count > 0)
                 {
                     windows[windows.Count - 1].Show();
+                }
+
+                //加入UI缓存
+                if (!cacheUIs.ContainsKey(window.uiPath))
+                {
+                    cacheUIs.Add(window.uiPath, new CacheUI(window.uiPath, window.uiGameObject, true));
+                    window.uiGameObject.transform.SetParent(cacheRoot, false);                 
+                }
+                else
+                {
+                    GameObject.Destroy(window.uiGameObject);
+                }
+                window.uiGameObject = null;
+                window.uiTransform = null;
+
+                //加入窗口缓存
+                if (!cacheWindows.ContainsKey(window.windowName))
+                {
+                    cacheWindows.Add(window.windowName, window);
                 }
             }
             else
@@ -298,13 +298,13 @@ namespace UIFramework
         /// 清空窗口栈
         /// </summary>
         /// <param name="windows"></param>
-        private void ClearWindows(List<Window> windows)
+        private void ClearWindows()
         {
             for (int i = windows.Count - 1; i >= 0; i--)
             {
-                var popupWindow = windows[i];
-                popupWindow.Hide();
-                popupWindow.Destroy();
+                Window window = windows[i];
+                window.Hide();
+                window.Destroy();
             }
             windows.Clear();
         }
@@ -331,43 +331,37 @@ namespace UIFramework
         }
 
         /// <summary>
-        /// 设置node的Z值在比所有windows的Z值高
+        /// 返回指定window在windows中的位置，-1表示不存在
         /// </summary>
-        /// <param name="node"></param>
-        /// <param name="windows"></param>
-        /// <param name="windowsNode"></param>
-        private void SetNodeZAboveWindows(Transform node, List<Window> windows, Transform windowsNode)
-        {
-            float zValue = windowsNode.localPosition.z;
-            if (windows.Count > 0)
-            {
-                var topWindow = windows[windows.Count - 1];
-                zValue += topWindow.uiTransform.localPosition.z + topWindow.zSpace;
-            }
-            var pos = node.localPosition;
-            node.localPosition = new Vector3(pos.x, pos.y, zValue);
-        }
-
-        /// <summary>
-        /// 检查窗口是否存在，窗口如果已经存在于栈中，提到栈顶
-        /// </summary>
-        /// <param name="uiName"></param>
-        /// <param name="args"></param>
+        /// <param name="windowName"></param>
         /// <returns></returns>
-        private bool CheckNormalWindowExist(string uiName)
+        private int FindWindow(string windowName)
         {
-            var normalWindows = windows[WindowType.Normal];
-            for (int i = 0; i < normalWindows.Count; i++)
+            for (int i = 0; i < windows.Count; i++)
             {
-                Window window = normalWindows[i];
-                if (window.uiName == uiName)
+                Window window = windows[i];
+                if (window.windowName == windowName)
                 {
-                    normalWindows.RemoveAt(i);
-                    normalWindows.Add(window);
-                    return true;
+                    return i;
                 }
             }
-            return false;
+            return -1;
+        }
+
+        private T NewWindow<T>() where T : Window, new()
+        {
+            T window;
+            string windowName = typeof(T).ToString();
+            if (cacheWindows.ContainsKey(windowName))
+            {
+                window = cacheWindows[windowName] as T;
+                cacheWindows.Remove(windowName);
+            }
+            else
+            {
+                window = new T();
+            }
+            return window;
         }
     }
 }

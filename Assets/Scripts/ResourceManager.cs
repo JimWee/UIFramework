@@ -3,17 +3,42 @@ using System;
 using System.Collections;
 using Object = UnityEngine.Object;
 
-public class ResourceManager
+public class ResourceManager : MonoBehaviour
 {
-    public static Object LoadAsset(string path)
+    public static ResourceManager Instance
     {
-        return Resources.Load(path);
+        get { return instance; }
+    }
+    private static ResourceManager instance;
+
+    void Awake()
+    {
+        instance = this;
     }
 
-    public static IEnumerator LoadAssetAsync(string path, Action<Object> callback)
+    public Object LoadAsset(string path)
+    {
+        Object obj = Resources.Load(path);
+        if (obj == null)
+        {
+            Debug.LogErrorFormat("Load asset failed : {0}", path);
+        }
+        return obj;
+    }
+
+    public void LoadAssetAsync(string path, Action<Object> callback)
+    {
+        StartCoroutine(_LoadAssetAsync(path, callback));
+    }
+
+    public IEnumerator _LoadAssetAsync(string path, Action<Object> callback)
     {
         ResourceRequest request = Resources.LoadAsync(path);
         yield return request;
+        if (request.asset == null)
+        {
+            Debug.LogErrorFormat("Load asset failed : {0}", path);
+        }
         callback(request.asset);
     }
 }
