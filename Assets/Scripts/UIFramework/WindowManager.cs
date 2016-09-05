@@ -28,6 +28,7 @@ namespace UIFramework
         public Transform cacheRoot;
         public Camera uiCamera;
         public GameObject loadingTipUI;
+        public GameObject loadingUI;
 
         public static WindowManager Instance
         {
@@ -56,9 +57,9 @@ namespace UIFramework
         /// </summary>
         public List<Window> windows;
         /// <summary>
-        /// 记录的窗口参数，用于恢复窗口
-        /// </summary>  
-        public Dictionary<string, object> windowArgsDic;
+        /// 场景切换时保留的窗口，用于再次回到场景时，恢复UI
+        /// </summary>
+        public List<KeyValuePair<Type, object>> savedWindows;
 
         void Awake()
         {
@@ -66,7 +67,7 @@ namespace UIFramework
             cacheUIs = new Dictionary<string, CacheUI>();
             cacheWindows = new Dictionary<string, Window>();
             windows = new List<Window>();
-            windowArgsDic = new Dictionary<string, object>();
+            savedWindows = new List<KeyValuePair<Type, object>>();
             DontDestroyOnLoad(gameObject);
         }
 
@@ -103,12 +104,17 @@ namespace UIFramework
                 });
         }
 
-        public void LoadWindow<T>(object windowArgs = null, bool isAsync = false, Action callback = null) where T : Window, new()
+        public void LoadWindow(Type type, object args = null, bool isAsync = false, Action callback = null)
         {
-            StartCoroutine(_LoadWindow<T>(windowArgs, isAsync, callback));
+            StartCoroutine(_LoadWindow(type, args, isAsync, callback));
         }
 
-        private IEnumerator _LoadWindow<T>(object windowArgs = null, bool isAsync = false, Action callback = null) where T : Window, new()
+        public void LoadWindow<T>(object args = null, bool isAsync = false, Action callback = null) where T : Window, new()
+        {
+            StartCoroutine(_LoadWindow(typeof(T), args, isAsync, callback));
+        }
+
+        private IEnumerator _LoadWindow(Type type, object args = null, bool isAsync = false, Action callback = null)
         {
             //显示异步加载UI
             if (isAsync)
@@ -118,10 +124,10 @@ namespace UIFramework
 
             Window window;
 
-            int index = FindWindow(typeof(T).ToString());
+            int index = FindWindow(type.ToString());
             if (index >= 0)//如果窗口已存在，则移到顶端,根窗口除外
             {
-                window = windows[index] as T;
+                window = windows[index];
                 if (window.isRoot)
                 {
                     Debug.LogErrorFormat("can not load existing root window : {0}", window.windowName);
@@ -132,7 +138,7 @@ namespace UIFramework
             }
             else//否则新建窗口，加入顶端
             {
-                window = NewWindow<T>();
+                window = NewWindow(type);
                 windows.Add(window);
                 yield return StartCoroutine(LoadUI(window, isAsync));
                 if (!string.IsNullOrEmpty(window.error))
@@ -150,10 +156,9 @@ namespace UIFramework
                 
             }
             //窗口参数
-            if (windowArgs != null)
+            if (args != null)
             {
-                window.args = windowArgs;
-                windowArgsDic[window.windowName] = windowArgs;
+                window.args = args;
             }
 
             window.Init();
@@ -280,12 +285,6 @@ namespace UIFramework
                 windows.RemoveAt(windows.Count - 1);
                 window.Hide();                
 
-                //如果需要，清除记录的窗口参数
-                if (window.args != null)
-                {
-                    windowArgsDic.Remove(window.windowName);
-                }
-
                 //加入UI缓存
                 if (!cacheUIs.ContainsKey(window.uiPath))
                 {
@@ -316,21 +315,6 @@ namespace UIFramework
                 args.onOkClicked = () => { Application.Quit(); };
                 LoadWindow<MessageWindow>(args);
             }
-        }
-
-        /// <summary>
-        /// 清空窗口栈
-        /// </summary>
-        /// <param name="windows"></param>
-        private void ClearWindows()
-        {
-            for (int i = windows.Count - 1; i >= 0; i--)
-            {
-                Window window = windows[i];
-                window.Hide();
-                window.Destroy();
-            }
-            windows.Clear();
         }
 
         /// <summary>
@@ -372,18 +356,18 @@ namespace UIFramework
             return -1;
         }
 
-        private T NewWindow<T>() where T : Window, new()
+        private Window NewWindow(Type type)
         {
-            T window;
-            string windowName = typeof(T).ToString();
+            Window window;
+            string windowName = type.ToString();
             if (cacheWindows.ContainsKey(windowName))
             {
-                window = cacheWindows[windowName] as T;
+                window = cacheWindows[windowName];
                 cacheWindows.Remove(windowName);
             }
             else
             {
-                window = new T();
+                window = Activator.CreateInstance(type) as Window;
             }
             return window;
         }
@@ -395,6 +379,72 @@ namespace UIFramework
             {
                 cacheWindows.Add(window.windowName, window);
             }
+        }
+
+        /// <summary>
+        /// 清除当前场景的UI数据
+        /// </summary>
+        public void Clear(bool isSaved)
+        {
+            ClearWindows(isSaved);
+            ClearCacheUIs();
+            ClearCacheWindows();
+        }
+
+        /// <summary>
+        /// 清除缓存的window
+        /// </summary>
+        private void ClearCacheWindows()
+        {
+            cacheWindows.Clear();
+        }
+
+        /// <summary>
+        /// 清空缓存的UI
+        /// </summary>
+        private void ClearCacheUIs()
+        {
+            cacheUIs.Clear();
+            cacheRoot.DestroyChildren();
+        }
+
+        /// <summary>
+        /// 清空窗口栈
+        /// </summary>
+        /// <param name="windows"></param>
+        private void ClearWindows(bool isSaved)
+        {
+            if (isSaved)
+            {
+                savedWindows.Clear();
+            }           
+            for (int i = windows.Count - 1; i >= 0; i--)
+            {
+                Window window = windows[i];
+                window.Hide();
+                window.Destroy();
+                if (isSaved && window.isSaved)
+                {
+                    savedWindows.Add(new KeyValuePair<Type, object>(window.GetType(), window.args));
+                }               
+            }
+            windows.Clear();
+
+            normalRoot.DestroyChildren();
+            fixedRoot.DestroyChildren();
+            popupRoot.DestroyChildren();
+        }
+
+        /// <summary>
+        /// 恢复窗口
+        /// </summary>
+        public void RestoreWindows()
+        {
+            for (int i = savedWindows.Count - 1; i >=0; i--)
+            {
+                LoadWindow(savedWindows[i].Key, savedWindows[i].Value);
+            }
+            savedWindows.Clear();
         }
     }
 }

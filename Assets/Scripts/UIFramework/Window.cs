@@ -78,6 +78,10 @@ namespace UIFramework
         /// 是否根窗口，根窗口会在开始是被创建，并且在当前场景不会被销毁
         /// </summary>
         public bool isRoot;
+        /// <summary>
+        /// 是否在切换场景时保存
+        /// </summary>
+        public bool isSaved;
 
         public Window(WindowType type, HideMode hideMode, string uiPath, bool isRoot = false)
         {
@@ -87,6 +91,7 @@ namespace UIFramework
             this.windowName = this.GetType().ToString();
             this.isActive = false;
             this.isRoot = isRoot;
+            this.isSaved = true;
         }
 
         /// <summary>
@@ -120,6 +125,16 @@ namespace UIFramework
         {
             this.zSpace = zSpace;
         }
+
+        /// <summary>
+        /// 设置是否在场景切换时保存
+        /// </summary>
+        /// <param name="isSaved"></param>
+        public void SetIsSaved(bool isSaved)
+        {
+            this.isSaved = isSaved;
+        }
+
         /// <summary>
         /// 当前窗口是否显示
         /// </summary>

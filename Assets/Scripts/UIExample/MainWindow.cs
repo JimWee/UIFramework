@@ -24,7 +24,7 @@ public class MainWindow : Window
         friendBtn = uiTransform.Find("BtnFriend").gameObject;
         modelNode = uiTransform.Find("ModelNode").gameObject;
 
-        UIUtility.RegisterClickedEvent(mapBtn, () => { });
+        UIUtility.RegisterClickedEvent(mapBtn, () => { WindowManager.Instance.LoadWindow<MapWindow>("测试参数传递"); });
         UIUtility.RegisterClickedEvent(raiseBtn, () => { WindowManager.Instance.LoadWindow<RaiseWindow>(); });
         UIUtility.RegisterClickedEvent(friendBtn, () => { WindowManager.Instance.LoadWindow<FriendWindow>(null, true); });
 

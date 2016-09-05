@@ -7,9 +7,17 @@ namespace UIFramework
 {
     public static class UIUtility
     {
+        public static void DestroyChildren(this Transform trans)
+        {
+            foreach (Transform child in trans)
+            {
+                GameObject.Destroy(child.gameObject);
+            }
+        }
+
         public static UnityAction goBackAction = () => { WindowManager.Instance.GoBack(); };
 
-        public static void RegisterClickedEvent(GameObject uiBtn, UnityAction clickedAction)
+        public static void RegisterClickedEvent(GameObject uiBtn, UnityAction clickedAction, bool isAdditive = false)
         {
             if (uiBtn == null)
             {
@@ -30,6 +38,10 @@ namespace UIFramework
                 return;
             }
 
+            if (!isAdditive)
+            {
+                btnCpt.onClick.RemoveAllListeners();
+            }
             btnCpt.onClick.AddListener(clickedAction);
         }
 

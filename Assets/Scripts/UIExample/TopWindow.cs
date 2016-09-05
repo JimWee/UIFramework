@@ -5,8 +5,9 @@ using UIFramework;
 
 public class TopWindow : Window
 {
-    public Button backBtn;
-    public Button raiselBtn;
+    public GameObject backBtn;
+    public GameObject raiselBtn;
+    public GameObject gotoLoginBtn;
 
     public TopWindow() : base(WindowType.Fixed, HideMode.HideNothing, "UIPrefabs/UITopWindow", true) { }
 
@@ -14,11 +15,14 @@ public class TopWindow : Window
     {
         base.Init();
 
-        backBtn = uiTransform.Find("BtnBack").GetComponent<Button>();
-        raiselBtn = uiTransform.Find("BtnRaise").GetComponent<Button>();
+        backBtn = uiTransform.Find("BtnBack").gameObject;
+        raiselBtn = uiTransform.Find("BtnRaise").gameObject;
+        gotoLoginBtn = uiTransform.Find("BtnGotoLogin").gameObject;
 
-        backBtn.onClick.AddListener(() => { WindowManager.Instance.GoBack(); });
-        raiselBtn.onClick.AddListener(() => { WindowManager.Instance.LoadWindow<RaiseWindow>(); });
+
+        UIUtility.RegisterClickedEvent(backBtn, () => { WindowManager.Instance.GoBack(); });
+        UIUtility.RegisterClickedEvent(raiselBtn, () => { WindowManager.Instance.LoadWindow<RaiseWindow>(); });
+        UIUtility.RegisterClickedEvent(gotoLoginBtn, () => { GameManager.Instance.GotoLogin(); });
     }
 
     public override void Show()
